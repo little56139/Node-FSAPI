@@ -1,0 +1,126 @@
+- @inline = defined?(inline)
+= semantic_form_for [:admin, @page], url: (@page.new_record? ? admin_pages_path : admin_page_path(@page.id)), remote: @inline, html: { multipart: true } do |form|
+
+  %input{name: "_change_layout", type: "hidden"}
+  - @page.new_record? ? @page.initialize_missing_translations : @page.create_missing_translations
+  - current_locale = ActiveadminSelleoCms::Locale.find_by_code(I18n.default_locale)
+  - @page.new_record? ? @page.initialize_missing_sections : @page.create_missing_sections
+  - @section_forms = []
+  -#= @page.errors.full_messages
+
+  = form.inputs "General options", id: 'id-general-options' do
+    - unless @inline
+      = form.input :layout_name, collection: ActiveadminSelleoCms::Layout.all.sort, include_blank: false, hint: "The form will reload on change"
+      = form.input :parent_id, as: :select, collection: nested_set_options(ActiveadminSelleoCms::Page, @page) {|i| "#{'-' * i.level} #{i.title}" }
+    = form.input :show_in_menu, as: :boolean
+    = form.input :is_published, as: :boolean
+    = form.input :published_at, as: :datetimepicker
+    = form.input :redirect_to_first_sub_page, as: :boolean
+    = form.input :is_link_url, as: :boolean, input_html: { checked: @page.link_url.present? }
+    = form.input :link_url, hint: "Enter remote URL including the http part at the beginning"
+    - form.object.settings.keys.each do |key|
+      = form.input key.to_sym, as: determine_field_type(form.object.send(key))
+
+
+  = form.semantic_fields_for :sections do |section_form|
+    - if @page.section_names.include? section_form.object.name
+      - @section_forms << section_form
+      = section_form.input :name, as: :hidden, label: false
+    - else
+      = ""
+
+  .language-tabs#id-meta-data
+    %ul.language-selection
+      %li= link_to current_locale.name, "#lang-#{current_locale.code}"
+      - @page.translations.each do |translation|
+        - unless translation.locale == current_locale.code
+          - if additional_locale = ActiveadminSelleoCms::Locale.enabled.find_by_code(translation.locale)
+            %li= link_to additional_locale.name, "#lang-#{additional_locale.code}"
+          - else
+            = ""
+
+    = form.semantic_fields_for :translations do |translated_form|
+      - if additional_locale = ActiveadminSelleoCms::Locale.enabled.find_by_code(translated_form.object.locale)
+        %div{id: "lang-#{additional_locale.code}", style: "#{'display:none;' if additional_locale.code == current_locale.code}"}
+          = render partial: 'translated_fields', locals: { locale: additional_locale, form: translated_form }
+      - else
+        = ""
+
+  = form.actions do
+    = form.action :submit
+    %li.cancel
+      - if @inline
+        = link_to_function I18n.t('active_admin.cancel'), "$('#file-manager').dialog('close');"
+      - else
+        = link_to I18n.t('active_admin.cancel'), admin_pages_path
+
+%div#file-manager
+
+:javascript
+  function is_link_url(){
+    if($('input#page_is_link_url').is(':checked')){
+      $('.link-url-hide, textarea').closest('li').hide();
+      $('li#page_link_url_input').show();
+    }else{
+      $('li#page_link_url_input').hide();
+      $('.link-url-hide, textarea').closest('li').show();
+    }
+  }
+
+  $(function() {
+        $(".language-tabs").tabs();
+        is_link_url();
+
+        $("input[id$='_title']").blur(function(){
+          slugId = '#' + $(this).attr('id').replace('_title', '_slug');
+          if ($(slugId).val().toString() == '')  {
+            $(slugId).attr('value', slug($(this).val().toString()) )
+          }
+
+          browserTitleId = '#' + $(this).attr('id').replace('_title', '_browser_title');
+          if ($(browserTitleId).val().toString() == '') {
+            $(browserTitleId).attr('value', $(this).val().toString() )
+          }
+        });
+
+        $('input#page_is_link_url').change(function(){
+          is_link_url();
+        });
+
+        $('select#page_layout_name').change(function(){
+          $(this).closest('form').find('input[name="_change_layout"]').attr('value','1');
+          $(this).closest('form').submit();
+        });
+
+        $('#file-manager').dialog({
+            width: 'auto',
+            height: 'auto',
+            title: 'CMS editor',
+            modal: true,
+            autoOpen: false,
+            resize: function( event, ui ) {
+              $(this).dialog("option", "position", ['center', 'center'] );
+            }
+          });
+    });
+
+  $(function() {
+
+      var $sidebar   = $("#sidebar"),
+          $window    = $(window),
+          offset     = $sidebar.offset(),
+          topPadding = 15;
+
+      $window.scroll(function() {
+          if ($window.scrollTop() > offset.top) {
+              $sidebar.stop().animate({
+                  marginTop: $window.scrollTop() - offset.top + topPadding
+              });
+          } else {
+              $sidebar.stop().animate({
+                  marginTop: 0
+              });
+          }
+      });
+
+  });
